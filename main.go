@@ -15,7 +15,7 @@ import (
 )
 
 var tpl = template.Must(template.ParseFiles("index.html"))
-var apikey *string
+var apiKey *string
 
 type Source struct {
 	ID   interface{} `json:"id"`
@@ -33,6 +33,11 @@ type Article struct {
 	Content     string    `json:"content"`
 }
 
+func (a *Article) FormatPublishedDate() string {
+	year, month, day := a.PublishedAt.Date()
+	return fmt.Sprintf("%v, %d, %d", month, day, year)
+}
+
 type Results struct {
 	Status       string    `json:"status"`
 	TotalResults int       `json:"totalResults"`
@@ -44,6 +49,22 @@ type Search struct {
 	NextPage   int
 	TotalPages int
 	Results    Results
+}
+
+func (s *Search) IsLastPage() bool {
+	return s.NextPage >= s.TotalPages
+}
+
+func (s *Search) CurrentPage() int {
+	if s.NextPage == 1 {
+		return s.NextPage
+	}
+
+	return s.NextPage - 1
+}
+
+func (s *Search) PreviousPage() int {
+	return s.CurrentPage() - 1
 }
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +98,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	search.NextPage = next
 	pageSize := 20
 
-	endpoint := fmt.Sprintf("https://newsapi.org/v2/everything?q=%s&pageSize=%d&page=%d&apiKey=%s&sortBy=publishedAt&language=en", url.QueryEscape(search.SearchKey), pageSize, search.NextPage, *apikey)
+	endpoint := fmt.Sprintf("https://newsapi.org/v2/everything?q=%s&pageSize=%d&page=%d&apiKey=%s&sortBy=publishedAt&language=en", url.QueryEscape(search.SearchKey), pageSize, search.NextPage, *apiKey)
 	resp, err := http.Get(endpoint)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -98,6 +119,11 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	search.TotalPages = int(math.Ceil(float64(search.Results.TotalResults / pageSize)))
+
+	if ok := !search.IsLastPage(); ok {
+		search.NextPage++
+	}
+
 	err = tpl.Execute(w, search)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -106,10 +132,10 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	apikey = flag.String("apikey", "", "Newsapi.org access key")
+	apiKey = flag.String("apikey", "", "Newsapi.org access key")
 	flag.Parse()
 
-	if *apikey == "" {
+	if *apiKey == "" {
 		log.Fatal("apikey must be set")
 	}
 
